@@ -116,6 +116,42 @@ def generate_agent_token() -> str:
     return secrets.token_hex(16)
 
 
+def group_results_by_target(results: list) -> list:
+    """Group results by target and rank within each group"""
+    from collections import defaultdict
+    
+    # Group by target
+    by_target = defaultdict(list)
+    for r in results:
+        by_target[r.target].append(r)
+    
+    # Sort each group by damage and calculate ranks
+    grouped = []
+    for target, target_results in by_target.items():
+        sorted_results = sorted(target_results, key=lambda x: x.total_damage, reverse=True)
+        total_damage = sum(r.total_damage for r in sorted_results)
+        
+        grouped.append({
+            "target": target,
+            "total_damage": total_damage,
+            "results": [
+                {
+                    "rank": i + 1,
+                    "user_id": r.user_id,
+                    "username": r.username,
+                    "total_damage": r.total_damage,
+                    "dps": round(r.dps, 1),
+                    "percent": round((r.total_damage / total_damage * 100) if total_damage > 0 else 0, 1),
+                }
+                for i, r in enumerate(sorted_results)
+            ]
+        })
+    
+    # Sort groups by total damage (highest first = main boss likely)
+    grouped.sort(key=lambda x: x["total_damage"], reverse=True)
+    return grouped
+
+
 # === DISCORD OAUTH ===
 
 # Store pending agent redirects (state -> redirect_url)
@@ -405,10 +441,12 @@ async def get_party(code: str, token: str = Query(...)):
             }
             for m in party.members.values()
         ],
+        "grouped_results": group_results_by_target(party.results),
         "results": [
             {
                 "user_id": r.user_id,
                 "username": r.username,
+                "target": r.target,
                 "total_damage": r.total_damage,
                 "dps": r.dps,
             }
@@ -602,14 +640,20 @@ async def handle_ws_message(user_id: str, data: dict, source: str):
         party.results = [r for r in party.results if r.user_id != user_id]
         party.results.append(result)
         
+        # Group results by target and sort by damage within each group
+        grouped_results = group_results_by_target(party.results)
+        
         # Broadcast updated results
         await broadcast_to_party(party_code, {
             "type": "results_update",
             "target": party.encounter_target,
+            "grouped_results": grouped_results,
+            # Also send flat list for backwards compatibility
             "results": [
                 {
                     "user_id": r.user_id,
                     "username": r.username,
+                    "target": r.target,
                     "total_damage": r.total_damage,
                     "dps": round(r.dps, 1),
                 }

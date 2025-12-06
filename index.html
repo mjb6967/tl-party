@@ -316,15 +316,43 @@
             50% { opacity: 0.7; }
         }
         
+        .target-group {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid #334155;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+        
+        .target-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid #334155;
+        }
+        
+        .target-name {
+            font-weight: 600;
+            color: #e2e8f0;
+            font-size: 1rem;
+        }
+        
+        .target-damage {
+            color: #22d3ee;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+        
         .results-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 16px;
         }
         
         .results-table th {
             text-align: left;
-            padding: 10px 8px;
+            padding: 10px 16px;
             font-size: 0.75rem;
             text-transform: uppercase;
             color: #64748b;
@@ -337,15 +365,23 @@
         }
         
         .results-table td {
-            padding: 12px 8px;
-            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+        }
+        
+        .results-table tr:last-child td {
+            border-bottom: none;
         }
         
         .results-table .rank {
             font-weight: 700;
-            color: #fbbf24;
-            width: 30px;
+            width: 40px;
         }
+        
+        .results-table .rank-1 { color: #fbbf24; }
+        .results-table .rank-2 { color: #94a3b8; }
+        .results-table .rank-3 { color: #cd7f32; }
+        .results-table .rank-other { color: #64748b; }
         
         .results-table .damage {
             font-weight: 600;
@@ -356,6 +392,11 @@
         .results-table .dps {
             color: #a78bfa;
             font-variant-numeric: tabular-nums;
+        }
+        
+        .results-table .percent {
+            color: #64748b;
+            font-size: 0.85rem;
         }
         
         .results-total {
@@ -471,22 +512,9 @@
             </div>
             
             <div id="resultsSection" class="hidden">
-                <div class="section-title" style="margin-top: 20px;">Results: <span id="targetName">-</span></div>
-                <table class="results-table">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>Player</th>
-                            <th>Damage</th>
-                            <th>DPS</th>
-                        </tr>
-                    </thead>
-                    <tbody id="resultsBody">
-                    </tbody>
-                </table>
-                <div class="results-total">
-                    <span class="label">Total Damage</span>
-                    <span class="value" id="totalDamage">0</span>
+                <div class="section-title" style="margin-top: 20px;">Encounter Results</div>
+                <div id="groupedResults">
+                    <!-- Grouped results will be rendered here -->
                 </div>
             </div>
             
@@ -585,34 +613,55 @@
             }
             
             // Results
-            updateResults(party.results, party.encounter_target);
+            updateGroupedResults(party.grouped_results);
         }
         
-        function updateResults(results, target) {
-            const hasResults = results && results.length > 0;
+        function updateGroupedResults(groupedResults) {
+            const hasResults = groupedResults && groupedResults.length > 0;
             document.getElementById('resultsSection').classList.toggle('hidden', !hasResults);
             document.getElementById('noResults').classList.toggle('hidden', hasResults);
             
             if (!hasResults) return;
             
-            document.getElementById('targetName').textContent = target || 'Unknown';
+            const container = document.getElementById('groupedResults');
             
-            const tbody = document.getElementById('resultsBody');
-            let totalDamage = 0;
-            
-            tbody.innerHTML = results.map((r, i) => {
-                totalDamage += r.total_damage;
-                return `
-                    <tr>
-                        <td class="rank">${i + 1}</td>
-                        <td>${r.username}</td>
-                        <td class="damage">${formatNumber(r.total_damage)}</td>
-                        <td class="dps">${formatNumber(Math.round(r.dps))}</td>
-                    </tr>
-                `;
-            }).join('');
-            
-            document.getElementById('totalDamage').textContent = formatNumber(totalDamage);
+            container.innerHTML = groupedResults.map(group => `
+                <div class="target-group">
+                    <div class="target-header">
+                        <span class="target-name">⚔️ ${group.target}</span>
+                        <span class="target-damage">${formatNumber(group.total_damage)} total</span>
+                    </div>
+                    <table class="results-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Player</th>
+                                <th>Damage</th>
+                                <th>%</th>
+                                <th>DPS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${group.results.map(r => `
+                                <tr>
+                                    <td class="rank rank-${r.rank <= 3 ? r.rank : 'other'}">${getRankMedal(r.rank)}</td>
+                                    <td>${r.username}</td>
+                                    <td class="damage">${formatNumber(r.total_damage)}</td>
+                                    <td class="percent">${r.percent}%</td>
+                                    <td class="dps">${formatNumber(Math.round(r.dps))}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `).join('');
+        }
+        
+        function getRankMedal(rank) {
+            if (rank === 1) return '🥇';
+            if (rank === 2) return '🥈';
+            if (rank === 3) return '🥉';
+            return '#' + rank;
         }
         
         // WebSocket
@@ -650,6 +699,7 @@
                 case 'encounter_start':
                     party.encounter_active = true;
                     party.results = [];
+                    party.grouped_results = [];
                     updatePartyView();
                     break;
                     
@@ -661,7 +711,8 @@
                 case 'results_update':
                     party.encounter_target = data.target;
                     party.results = data.results;
-                    updateResults(data.results, data.target);
+                    party.grouped_results = data.grouped_results;
+                    updateGroupedResults(data.grouped_results);
                     break;
             }
         }
