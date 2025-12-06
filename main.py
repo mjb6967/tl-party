@@ -118,9 +118,12 @@ def generate_agent_token() -> str:
 
 # === DISCORD OAUTH ===
 
+# Store pending agent redirects (state -> redirect_url)
+agent_redirects: dict[str, str] = {}
+
 @app.get("/auth/login")
 async def login():
-    """Redirect to Discord OAuth"""
+    """Redirect to Discord OAuth (for web)"""
     params = {
         "client_id": DISCORD_CLIENT_ID,
         "redirect_uri": DISCORD_REDIRECT_URI,
@@ -131,8 +134,26 @@ async def login():
     return RedirectResponse(url)
 
 
+@app.get("/auth/agent-login")
+async def agent_login(redirect: str):
+    """Redirect to Discord OAuth (for agent) - redirects back to agent with token"""
+    # Generate state to track this login
+    state = secrets.token_hex(16)
+    agent_redirects[state] = redirect
+    
+    params = {
+        "client_id": DISCORD_CLIENT_ID,
+        "redirect_uri": DISCORD_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "identify",
+        "state": state,
+    }
+    url = "https://discord.com/api/oauth2/authorize?" + "&".join(f"{k}={v}" for k, v in params.items())
+    return RedirectResponse(url)
+
+
 @app.get("/auth/callback")
-async def auth_callback(code: str):
+async def auth_callback(code: str, state: Optional[str] = None):
     """Handle Discord OAuth callback"""
     # Exchange code for token
     async with httpx.AsyncClient() as client:
@@ -177,7 +198,13 @@ async def auth_callback(code: str):
     )
     user_tokens[agent_token] = user_id
     
-    # Redirect to frontend with token
+    # Check if this is an agent login
+    if state and state in agent_redirects:
+        agent_redirect = agent_redirects.pop(state)
+        # Redirect to agent's local callback with token
+        return RedirectResponse(f"{agent_redirect}?token={agent_token}")
+    
+    # Regular web login - redirect to frontend
     return RedirectResponse(f"/?token={agent_token}")
 
 
