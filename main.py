@@ -1,0 +1,596 @@
+"""
+TL DPS Party Server
+- Discord OAuth login
+- Party create/join
+- WebSocket for real-time encounter control
+- Results aggregation
+"""
+
+import os
+import secrets
+import time
+from datetime import datetime
+from typing import Optional
+from dataclasses import dataclass, field
+
+import httpx
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Query
+from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+import uvicorn
+
+# === CONFIGURATION ===
+# Use environment variables for production, with localhost defaults for dev
+DISCORD_CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "1446291180475387945")
+DISCORD_CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "YOUR_SECRET_HERE")
+BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
+DISCORD_REDIRECT_URI = f"{BASE_URL}/auth/callback"
+
+# Session secret (use env var in production!)
+SESSION_SECRET = os.environ.get("SESSION_SECRET", secrets.token_hex(32))
+
+app = FastAPI(title="TL DPS Party Server")
+
+# Middleware
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SESSION_SECRET,
+    session_cookie="tl_session",
+    max_age=86400 * 7,  # 1 week
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# === DATA STRUCTURES (In-Memory for MVP) ===
+
+@dataclass
+class User:
+    id: str  # Discord ID
+    username: str
+    avatar: Optional[str]
+    token: str  # Session token for agent
+
+
+@dataclass 
+class PartyMember:
+    user_id: str
+    username: str
+    avatar: Optional[str]
+    websocket: Optional[WebSocket] = None
+    agent_websocket: Optional[WebSocket] = None
+    connected: bool = False
+    agent_connected: bool = False
+
+
+@dataclass
+class EncounterResult:
+    user_id: str
+    username: str
+    target: str
+    total_damage: int
+    duration: float
+    dps: float
+
+
+@dataclass
+class Party:
+    code: str
+    leader_id: str
+    members: dict = field(default_factory=dict)  # user_id -> PartyMember
+    encounter_active: bool = False
+    encounter_target: str = ""
+    encounter_started_at: Optional[datetime] = None
+    results: list = field(default_factory=list)  # List of EncounterResult
+
+
+# In-memory storage
+users: dict[str, User] = {}  # user_id -> User
+parties: dict[str, Party] = {}  # code -> Party
+user_tokens: dict[str, str] = {}  # token -> user_id
+user_parties: dict[str, str] = {}  # user_id -> party_code
+
+
+def generate_party_code() -> str:
+    """Generate a 4-character party code"""
+    while True:
+        code = secrets.token_hex(2).upper()  # 4 chars
+        if code not in parties:
+            return code
+
+
+def generate_agent_token() -> str:
+    """Generate a token for agent authentication"""
+    return secrets.token_hex(16)
+
+
+# === DISCORD OAUTH ===
+
+@app.get("/auth/login")
+async def login():
+    """Redirect to Discord OAuth"""
+    params = {
+        "client_id": DISCORD_CLIENT_ID,
+        "redirect_uri": DISCORD_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "identify",
+    }
+    url = "https://discord.com/api/oauth2/authorize?" + "&".join(f"{k}={v}" for k, v in params.items())
+    return RedirectResponse(url)
+
+
+@app.get("/auth/callback")
+async def auth_callback(code: str):
+    """Handle Discord OAuth callback"""
+    # Exchange code for token
+    async with httpx.AsyncClient() as client:
+        token_response = await client.post(
+            "https://discord.com/api/oauth2/token",
+            data={
+                "client_id": DISCORD_CLIENT_ID,
+                "client_secret": DISCORD_CLIENT_SECRET,
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": DISCORD_REDIRECT_URI,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        
+        if token_response.status_code != 200:
+            raise HTTPException(400, "Failed to authenticate with Discord")
+        
+        token_data = token_response.json()
+        access_token = token_data["access_token"]
+        
+        # Get user info
+        user_response = await client.get(
+            "https://discord.com/api/users/@me",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        
+        if user_response.status_code != 200:
+            raise HTTPException(400, "Failed to get user info")
+        
+        user_data = user_response.json()
+    
+    # Create or update user
+    user_id = user_data["id"]
+    agent_token = generate_agent_token()
+    
+    users[user_id] = User(
+        id=user_id,
+        username=user_data["username"],
+        avatar=user_data.get("avatar"),
+        token=agent_token,
+    )
+    user_tokens[agent_token] = user_id
+    
+    # Redirect to frontend with token
+    return RedirectResponse(f"/?token={agent_token}")
+
+
+@app.get("/auth/me")
+async def get_me(token: str = Query(...)):
+    """Get current user info"""
+    user_id = user_tokens.get(token)
+    if not user_id or user_id not in users:
+        raise HTTPException(401, "Invalid token")
+    
+    user = users[user_id]
+    party_code = user_parties.get(user_id)
+    party_info = None
+    
+    if party_code and party_code in parties:
+        party = parties[party_code]
+        party_info = {
+            "code": party.code,
+            "is_leader": party.leader_id == user_id,
+            "member_count": len(party.members),
+            "encounter_active": party.encounter_active,
+        }
+    
+    return {
+        "id": user.id,
+        "username": user.username,
+        "avatar": user.avatar,
+        "agent_token": user.token,
+        "party": party_info,
+    }
+
+
+# === PARTY MANAGEMENT ===
+
+@app.post("/party/create")
+async def create_party(token: str = Query(...)):
+    """Create a new party"""
+    user_id = user_tokens.get(token)
+    if not user_id or user_id not in users:
+        raise HTTPException(401, "Invalid token")
+    
+    # Leave current party if in one
+    if user_id in user_parties:
+        await leave_party(token)
+    
+    user = users[user_id]
+    code = generate_party_code()
+    
+    party = Party(
+        code=code,
+        leader_id=user_id,
+        members={
+            user_id: PartyMember(
+                user_id=user_id,
+                username=user.username,
+                avatar=user.avatar,
+            )
+        },
+    )
+    
+    parties[code] = party
+    user_parties[user_id] = code
+    
+    return {"code": code, "is_leader": True}
+
+
+@app.post("/party/join/{code}")
+async def join_party(code: str, token: str = Query(...)):
+    """Join an existing party"""
+    user_id = user_tokens.get(token)
+    if not user_id or user_id not in users:
+        raise HTTPException(401, "Invalid token")
+    
+    code = code.upper()
+    if code not in parties:
+        raise HTTPException(404, "Party not found")
+    
+    # Leave current party if in one
+    if user_id in user_parties:
+        await leave_party(token)
+    
+    user = users[user_id]
+    party = parties[code]
+    
+    party.members[user_id] = PartyMember(
+        user_id=user_id,
+        username=user.username,
+        avatar=user.avatar,
+    )
+    user_parties[user_id] = code
+    
+    # Notify other members
+    await broadcast_to_party(code, {
+        "type": "member_joined",
+        "user_id": user_id,
+        "username": user.username,
+        "member_count": len(party.members),
+    })
+    
+    return {
+        "code": code,
+        "is_leader": party.leader_id == user_id,
+        "member_count": len(party.members),
+    }
+
+
+@app.post("/party/leave")
+async def leave_party(token: str = Query(...)):
+    """Leave current party"""
+    user_id = user_tokens.get(token)
+    if not user_id:
+        raise HTTPException(401, "Invalid token")
+    
+    if user_id not in user_parties:
+        return {"status": "not in party"}
+    
+    code = user_parties[user_id]
+    if code not in parties:
+        del user_parties[user_id]
+        return {"status": "party gone"}
+    
+    party = parties[code]
+    
+    # Remove from party
+    if user_id in party.members:
+        del party.members[user_id]
+    del user_parties[user_id]
+    
+    # If leader left, disband or transfer
+    if party.leader_id == user_id:
+        if party.members:
+            # Transfer to first remaining member
+            new_leader_id = next(iter(party.members))
+            party.leader_id = new_leader_id
+            await broadcast_to_party(code, {
+                "type": "leader_changed",
+                "new_leader_id": new_leader_id,
+            })
+        else:
+            # Disband empty party
+            del parties[code]
+            return {"status": "party disbanded"}
+    
+    # Notify remaining members
+    await broadcast_to_party(code, {
+        "type": "member_left",
+        "user_id": user_id,
+        "member_count": len(party.members),
+    })
+    
+    return {"status": "left"}
+
+
+@app.get("/party/{code}")
+async def get_party(code: str, token: str = Query(...)):
+    """Get party info"""
+    user_id = user_tokens.get(token)
+    if not user_id:
+        raise HTTPException(401, "Invalid token")
+    
+    code = code.upper()
+    if code not in parties:
+        raise HTTPException(404, "Party not found")
+    
+    party = parties[code]
+    
+    return {
+        "code": party.code,
+        "leader_id": party.leader_id,
+        "is_leader": party.leader_id == user_id,
+        "encounter_active": party.encounter_active,
+        "encounter_target": party.encounter_target,
+        "members": [
+            {
+                "user_id": m.user_id,
+                "username": m.username,
+                "avatar": m.avatar,
+                "connected": m.connected,
+                "agent_connected": m.agent_connected,
+            }
+            for m in party.members.values()
+        ],
+        "results": [
+            {
+                "user_id": r.user_id,
+                "username": r.username,
+                "total_damage": r.total_damage,
+                "dps": r.dps,
+            }
+            for r in sorted(party.results, key=lambda x: x.total_damage, reverse=True)
+        ],
+    }
+
+
+# === ENCOUNTER CONTROL ===
+
+@app.post("/party/{code}/start")
+async def start_encounter(code: str, token: str = Query(...)):
+    """Start an encounter (leader only)"""
+    user_id = user_tokens.get(token)
+    if not user_id:
+        raise HTTPException(401, "Invalid token")
+    
+    code = code.upper()
+    if code not in parties:
+        raise HTTPException(404, "Party not found")
+    
+    party = parties[code]
+    
+    if party.leader_id != user_id:
+        raise HTTPException(403, "Only leader can start encounters")
+    
+    party.encounter_active = True
+    party.encounter_started_at = datetime.now()
+    party.results = []  # Clear previous results
+    
+    # Broadcast to all members (web + agents)
+    await broadcast_to_party(code, {
+        "type": "encounter_start",
+        "timestamp": party.encounter_started_at.isoformat(),
+    })
+    
+    return {"status": "started"}
+
+
+@app.post("/party/{code}/end")
+async def end_encounter(code: str, token: str = Query(...)):
+    """End an encounter (leader only)"""
+    user_id = user_tokens.get(token)
+    if not user_id:
+        raise HTTPException(401, "Invalid token")
+    
+    code = code.upper()
+    if code not in parties:
+        raise HTTPException(404, "Party not found")
+    
+    party = parties[code]
+    
+    if party.leader_id != user_id:
+        raise HTTPException(403, "Only leader can end encounters")
+    
+    party.encounter_active = False
+    
+    # Broadcast end signal - agents will submit results
+    await broadcast_to_party(code, {
+        "type": "encounter_end",
+    })
+    
+    return {"status": "ended"}
+
+
+# === WEBSOCKET ===
+
+async def broadcast_to_party(code: str, message: dict):
+    """Send message to all connected party members"""
+    if code not in parties:
+        return
+    
+    party = parties[code]
+    for member in party.members.values():
+        # Send to web client
+        if member.websocket:
+            try:
+                await member.websocket.send_json(message)
+            except:
+                member.websocket = None
+                member.connected = False
+        
+        # Send to agent
+        if member.agent_websocket:
+            try:
+                await member.agent_websocket.send_json(message)
+            except:
+                member.agent_websocket = None
+                member.agent_connected = False
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket, token: str, source: str = "web"):
+    """WebSocket connection for real-time updates
+    
+    source: "web" for browser, "agent" for desktop agent
+    """
+    user_id = user_tokens.get(token)
+    if not user_id or user_id not in users:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+    
+    await websocket.accept()
+    
+    # Find user's party and update connection status
+    party_code = user_parties.get(user_id)
+    if party_code and party_code in parties:
+        party = parties[party_code]
+        if user_id in party.members:
+            member = party.members[user_id]
+            if source == "agent":
+                member.agent_websocket = websocket
+                member.agent_connected = True
+            else:
+                member.websocket = websocket
+                member.connected = True
+            
+            # Notify party of connection
+            await broadcast_to_party(party_code, {
+                "type": "member_status",
+                "user_id": user_id,
+                "connected": member.connected,
+                "agent_connected": member.agent_connected,
+            })
+    
+    try:
+        while True:
+            data = await websocket.receive_json()
+            await handle_ws_message(user_id, data, source)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        # Update connection status on disconnect
+        party_code = user_parties.get(user_id)
+        if party_code and party_code in parties:
+            party = parties[party_code]
+            if user_id in party.members:
+                member = party.members[user_id]
+                if source == "agent":
+                    member.agent_websocket = None
+                    member.agent_connected = False
+                else:
+                    member.websocket = None
+                    member.connected = False
+                
+                await broadcast_to_party(party_code, {
+                    "type": "member_status",
+                    "user_id": user_id,
+                    "connected": member.connected,
+                    "agent_connected": member.agent_connected,
+                })
+
+
+async def handle_ws_message(user_id: str, data: dict, source: str):
+    """Handle incoming WebSocket messages"""
+    msg_type = data.get("type")
+    
+    if msg_type == "submit_results":
+        # Agent submitting encounter results
+        party_code = user_parties.get(user_id)
+        if not party_code or party_code not in parties:
+            return
+        
+        party = parties[party_code]
+        user = users[user_id]
+        
+        result = EncounterResult(
+            user_id=user_id,
+            username=user.username,
+            target=data.get("target", "Unknown"),
+            total_damage=data.get("total_damage", 0),
+            duration=data.get("duration", 0),
+            dps=data.get("dps", 0),
+        )
+        
+        # Update target name from first result
+        if not party.encounter_target and result.target:
+            party.encounter_target = result.target
+        
+        # Replace existing result from same user or add new
+        party.results = [r for r in party.results if r.user_id != user_id]
+        party.results.append(result)
+        
+        # Broadcast updated results
+        await broadcast_to_party(party_code, {
+            "type": "results_update",
+            "target": party.encounter_target,
+            "results": [
+                {
+                    "user_id": r.user_id,
+                    "username": r.username,
+                    "total_damage": r.total_damage,
+                    "dps": round(r.dps, 1),
+                }
+                for r in sorted(party.results, key=lambda x: x.total_damage, reverse=True)
+            ],
+        })
+
+
+# === SERVE FRONTEND ===
+
+@app.get("/")
+async def serve_frontend():
+    """Serve the frontend HTML"""
+    # Check multiple locations for flexibility
+    locations = [
+        "index.html",              # Same directory (production)
+        "../frontend/index.html",  # Development structure
+        "frontend/index.html",     # Alternative
+    ]
+    
+    for path in locations:
+        try:
+            with open(path, "r") as f:
+                return HTMLResponse(f.read())
+        except FileNotFoundError:
+            continue
+    
+    return HTMLResponse("""
+        <h1>Frontend not found</h1>
+        <p>Place index.html in the same folder as main.py</p>
+        <p>Checked: index.html, ../frontend/index.html, frontend/index.html</p>
+    """)
+
+
+if __name__ == "__main__":
+    print("\n" + "=" * 50)
+    print("  TL DPS Party Server")
+    print("=" * 50)
+    print(f"  Web UI: {BASE_URL}")
+    print(f"  Login:  {BASE_URL}/auth/login")
+    print("=" * 50 + "\n")
+    
+    uvicorn.run(app, host="0.0.0.0", port=8000)
