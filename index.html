@@ -670,6 +670,8 @@
         async function createParty() {
             try {
                 const result = await api('/party/create', { method: 'POST' });
+                // Update user object with new party info
+                user.party = { code: result.code };
                 await loadParty();
                 showView('partyView');
             } catch (e) {
@@ -685,7 +687,9 @@
             }
             
             try {
-                await api(`/party/join/${code}`, { method: 'POST' });
+                const result = await api(`/party/join/${code}`, { method: 'POST' });
+                // Update user object with party info
+                user.party = { code: result.code || code };
                 await loadParty();
                 showView('partyView');
             } catch (e) {

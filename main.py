@@ -98,6 +98,10 @@ parties: dict[str, Party] = {}  # code -> Party
 user_tokens: dict[str, str] = {}  # token -> user_id
 user_parties: dict[str, str] = {}  # user_id -> party_code
 
+# Global websocket storage (independent of party membership)
+web_sockets: dict[str, WebSocket] = {}  # user_id -> web WebSocket
+agent_sockets: dict[str, WebSocket] = {}  # user_id -> agent WebSocket
+
 
 def generate_party_code() -> str:
     """Generate a 4-character party code"""
@@ -230,6 +234,8 @@ async def create_party(token: str = Query(...)):
                 user_id=user_id,
                 username=user.username,
                 avatar=user.avatar,
+                connected=user_id in web_sockets,
+                agent_connected=user_id in agent_sockets,
             )
         },
     )
@@ -258,10 +264,13 @@ async def join_party(code: str, token: str = Query(...)):
     user = users[user_id]
     party = parties[code]
     
+    # Create member with current connection status from global storage
     party.members[user_id] = PartyMember(
         user_id=user_id,
         username=user.username,
         avatar=user.avatar,
+        connected=user_id in web_sockets,
+        agent_connected=user_id in agent_sockets,
     )
     user_parties[user_id] = code
     
@@ -271,6 +280,8 @@ async def join_party(code: str, token: str = Query(...)):
         "user_id": user_id,
         "username": user.username,
         "member_count": len(party.members),
+        "connected": user_id in web_sockets,
+        "agent_connected": user_id in agent_sockets,
     })
     
     return {
@@ -325,6 +336,17 @@ async def leave_party(token: str = Query(...)):
     })
     
     return {"status": "left"}
+
+
+@app.get("/debug/parties")
+async def debug_parties():
+    """Debug endpoint to see all parties"""
+    return {
+        "party_count": len(parties),
+        "party_codes": list(parties.keys()),
+        "user_count": len(users),
+        "token_count": len(user_tokens),
+    }
 
 
 @app.get("/party/{code}")
@@ -434,20 +456,22 @@ async def broadcast_to_party(code: str, message: dict):
     
     party = parties[code]
     for member in party.members.values():
-        # Send to web client
-        if member.websocket:
+        user_id = member.user_id
+        
+        # Send to web client (from global storage)
+        if user_id in web_sockets:
             try:
-                await member.websocket.send_json(message)
+                await web_sockets[user_id].send_json(message)
             except:
-                member.websocket = None
+                del web_sockets[user_id]
                 member.connected = False
         
-        # Send to agent
-        if member.agent_websocket:
+        # Send to agent (from global storage)
+        if user_id in agent_sockets:
             try:
-                await member.agent_websocket.send_json(message)
+                await agent_sockets[user_id].send_json(message)
             except:
-                member.agent_websocket = None
+                del agent_sockets[user_id]
                 member.agent_connected = False
 
 
@@ -464,17 +488,21 @@ async def websocket_endpoint(websocket: WebSocket, token: str, source: str = "we
     
     await websocket.accept()
     
-    # Find user's party and update connection status
+    # Store in global websocket storage (works regardless of party status)
+    if source == "agent":
+        agent_sockets[user_id] = websocket
+    else:
+        web_sockets[user_id] = websocket
+    
+    # If user is in a party, update their member status
     party_code = user_parties.get(user_id)
     if party_code and party_code in parties:
         party = parties[party_code]
         if user_id in party.members:
             member = party.members[user_id]
             if source == "agent":
-                member.agent_websocket = websocket
                 member.agent_connected = True
             else:
-                member.websocket = websocket
                 member.connected = True
             
             # Notify party of connection
@@ -492,17 +520,21 @@ async def websocket_endpoint(websocket: WebSocket, token: str, source: str = "we
     except WebSocketDisconnect:
         pass
     finally:
-        # Update connection status on disconnect
+        # Remove from global storage
+        if source == "agent":
+            agent_sockets.pop(user_id, None)
+        else:
+            web_sockets.pop(user_id, None)
+        
+        # Update party member status on disconnect
         party_code = user_parties.get(user_id)
         if party_code and party_code in parties:
             party = parties[party_code]
             if user_id in party.members:
                 member = party.members[user_id]
                 if source == "agent":
-                    member.agent_websocket = None
                     member.agent_connected = False
                 else:
-                    member.websocket = None
                     member.connected = False
                 
                 await broadcast_to_party(party_code, {
