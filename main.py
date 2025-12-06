@@ -615,7 +615,7 @@ async def handle_ws_message(user_id: str, data: dict, source: str):
     msg_type = data.get("type")
     
     if msg_type == "submit_results":
-        # Agent submitting encounter results
+        # Agent submitting encounter results (one per target)
         party_code = user_parties.get(user_id)
         if not party_code or party_code not in parties:
             return
@@ -623,10 +623,12 @@ async def handle_ws_message(user_id: str, data: dict, source: str):
         party = parties[party_code]
         user = users[user_id]
         
+        target = data.get("target", "Unknown")
+        
         result = EncounterResult(
             user_id=user_id,
             username=user.username,
-            target=data.get("target", "Unknown"),
+            target=target,
             total_damage=data.get("total_damage", 0),
             duration=data.get("duration", 0),
             dps=data.get("dps", 0),
@@ -636,8 +638,8 @@ async def handle_ws_message(user_id: str, data: dict, source: str):
         if not party.encounter_target and result.target:
             party.encounter_target = result.target
         
-        # Replace existing result from same user or add new
-        party.results = [r for r in party.results if r.user_id != user_id]
+        # Replace existing result from same user + same target (allow multiple targets per user)
+        party.results = [r for r in party.results if not (r.user_id == user_id and r.target == target)]
         party.results.append(result)
         
         # Group results by target and sort by damage within each group
