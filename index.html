@@ -316,6 +316,38 @@
             50% { opacity: 0.7; }
         }
         
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .target-filter {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .target-filter label {
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+        
+        .target-filter select {
+            padding: 6px 12px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+        
+        .target-filter select:hover {
+            border-color: #22d3ee;
+        }
+        
         .target-group {
             background: rgba(30, 41, 59, 0.5);
             border: 1px solid #334155;
@@ -512,7 +544,15 @@
             </div>
             
             <div id="resultsSection" class="hidden">
-                <div class="section-title" style="margin-top: 20px;">Encounter Results</div>
+                <div class="results-header">
+                    <div class="section-title" style="margin-top: 20px;">Encounter Results</div>
+                    <div class="target-filter">
+                        <label for="targetFilter">Filter:</label>
+                        <select id="targetFilter" onchange="filterResults()">
+                            <option value="">All Targets</option>
+                        </select>
+                    </div>
+                </div>
                 <div id="groupedResults">
                     <!-- Grouped results will be rendered here -->
                 </div>
@@ -616,16 +656,51 @@
             updateGroupedResults(party.grouped_results);
         }
         
+        // Store full results for filtering
+        let allGroupedResults = [];
+        
         function updateGroupedResults(groupedResults) {
             const hasResults = groupedResults && groupedResults.length > 0;
             document.getElementById('resultsSection').classList.toggle('hidden', !hasResults);
             document.getElementById('noResults').classList.toggle('hidden', hasResults);
             
-            if (!hasResults) return;
+            if (!hasResults) {
+                allGroupedResults = [];
+                return;
+            }
             
+            // Store for filtering
+            allGroupedResults = groupedResults;
+            
+            // Update target filter dropdown
+            const filterSelect = document.getElementById('targetFilter');
+            const currentValue = filterSelect.value;
+            filterSelect.innerHTML = '<option value="">All Targets</option>' +
+                groupedResults.map(g => `<option value="${g.target}">${g.target}</option>`).join('');
+            
+            // Restore selection if target still exists
+            if (currentValue && groupedResults.some(g => g.target === currentValue)) {
+                filterSelect.value = currentValue;
+            }
+            
+            // Render with current filter
+            renderFilteredResults();
+        }
+        
+        function filterResults() {
+            renderFilteredResults();
+        }
+        
+        function renderFilteredResults() {
+            const filterValue = document.getElementById('targetFilter').value;
             const container = document.getElementById('groupedResults');
             
-            container.innerHTML = groupedResults.map(group => `
+            let resultsToShow = allGroupedResults;
+            if (filterValue) {
+                resultsToShow = allGroupedResults.filter(g => g.target === filterValue);
+            }
+            
+            container.innerHTML = resultsToShow.map(group => `
                 <div class="target-group">
                     <div class="target-header">
                         <span class="target-name">⚔️ ${group.target}</span>
@@ -700,6 +775,8 @@
                     party.encounter_active = true;
                     party.results = [];
                     party.grouped_results = [];
+                    allGroupedResults = [];
+                    document.getElementById('targetFilter').value = '';
                     updatePartyView();
                     break;
                     
