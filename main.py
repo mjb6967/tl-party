@@ -666,6 +666,43 @@ async def handle_ws_message(user_id: str, data: dict, source: str):
 
 # === SERVE FRONTEND ===
 
+# Agent download URL - set via environment variable or use GitHub releases
+AGENT_DOWNLOAD_URL = os.environ.get("AGENT_DOWNLOAD_URL", "")
+
+@app.get("/download/agent")
+async def download_agent():
+    """Redirect to agent download or serve from URL"""
+    if AGENT_DOWNLOAD_URL:
+        return RedirectResponse(AGENT_DOWNLOAD_URL)
+    else:
+        # Return a helpful HTML page if no download URL configured
+        return HTMLResponse("""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Agent Download</title>
+                <style>
+                    body { font-family: Arial, sans-serif; background: #1a1a2e; color: #e2e8f0; 
+                           display: flex; justify-content: center; align-items: center; 
+                           height: 100vh; margin: 0; }
+                    .container { text-align: center; max-width: 500px; padding: 20px; }
+                    h1 { color: #fbbf24; }
+                    p { color: #94a3b8; }
+                    a { color: #22d3ee; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>⚠️ Download Not Configured</h1>
+                    <p>The server administrator needs to set the AGENT_DOWNLOAD_URL environment variable.</p>
+                    <p>This should point to the TL-Party-Agent.exe file (e.g., a GitHub release URL).</p>
+                    <p><a href="/">← Back to Home</a></p>
+                </div>
+            </body>
+            </html>
+        """)
+
+
 @app.get("/")
 async def serve_frontend():
     """Serve the frontend HTML"""
