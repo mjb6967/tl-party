@@ -1267,6 +1267,13 @@
         async function startEncounter() {
             try {
                 await api(`/party/${party.code}/start`, { method: 'POST' });
+                // Update local state immediately (don't wait for WebSocket)
+                party.encounter_active = true;
+                party.results = [];
+                party.grouped_results = [];
+                allGroupedResults = [];
+                document.getElementById('targetFilter').value = '';
+                updatePartyView();
             } catch (e) {
                 alert('Failed to start encounter: ' + e.message);
             }
@@ -1275,6 +1282,9 @@
         async function endEncounter() {
             try {
                 await api(`/party/${party.code}/end`, { method: 'POST' });
+                // Update local state immediately (don't wait for WebSocket)
+                party.encounter_active = false;
+                updatePartyView();
             } catch (e) {
                 alert('Failed to end encounter: ' + e.message);
             }
