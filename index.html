@@ -557,6 +557,60 @@
         
         .hidden { display: none !important; }
         
+        /* Buy Me a Coffee */
+        .coffee-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: linear-gradient(135deg, #ff813f 0%, #ffdd00 100%);
+            color: #1a1a2e;
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        
+        .coffee-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 129, 63, 0.4);
+        }
+        
+        .coffee-card {
+            background: linear-gradient(135deg, rgba(255, 129, 63, 0.15) 0%, rgba(255, 221, 0, 0.1) 100%);
+            border: 1px solid rgba(255, 129, 63, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            margin-top: 24px;
+        }
+        
+        .coffee-card p {
+            color: #94a3b8;
+            font-size: 0.85rem;
+            margin-bottom: 12px;
+        }
+        
+        .coffee-card .coffee-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #ff813f 0%, #ffdd00 100%);
+            color: #1a1a2e;
+            text-decoration: none;
+            font-size: 1rem;
+            font-weight: 700;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        
+        .coffee-card .coffee-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 129, 63, 0.4);
+        }
+        
         /* Navigation */
         .nav {
             display: flex;
@@ -662,16 +716,16 @@
         }
         
         .warning-box {
-            background: rgba(251, 191, 36, 0.1);
-            border: 1px solid rgba(251, 191, 36, 0.3);
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.4);
             border-radius: 8px;
             padding: 16px;
             margin-bottom: 20px;
         }
         
         .warning-box h4 {
-            color: #fbbf24;
-            font-size: 0.9rem;
+            color: #f87171;
+            font-size: 0.95rem;
             margin-bottom: 8px;
             display: flex;
             align-items: center;
@@ -679,7 +733,7 @@
         }
         
         .warning-box p {
-            color: #94a3b8;
+            color: #e2e8f0;
             font-size: 0.85rem;
             line-height: 1.5;
         }
@@ -719,6 +773,7 @@
         <nav class="nav" id="mainNav">
             <span class="nav-link active" onclick="showPage('main')" id="navMain">🏠 Home</span>
             <span class="nav-link" onclick="showPage('download')" id="navDownload">📥 Download Agent</span>
+            <a href="https://buymeacoffee.com/SirPHz" target="_blank" class="coffee-link">☕ Support</a>
         </nav>
         
         <!-- Download View -->
@@ -733,18 +788,19 @@
             </a>
             
             <div class="warning-box">
-                <h4>⚠️ Before You Start</h4>
-                <p>You must enable combat logging in-game before the agent can track your damage.</p>
+                <h4>🚨 REQUIRED: Enable Combat Logging In-Game</h4>
+                <p><strong>Every party member</strong> must turn this on or their damage will not be tracked — even if both status dots are green!</p>
             </div>
             
             <div class="instructions">
-                <h3>📋 Step 1: Enable Combat Logging In-Game</h3>
+                <h3>📋 Step 1: Enable Combat Logging (Required)</h3>
                 <ol>
                     <li>Open <span class="highlight">Throne and Liberty</span></li>
                     <li>Go to <span class="highlight">Settings → Game → Combat</span></li>
                     <li>Find <span class="highlight">"Combat Log"</span> and set it to <span class="highlight">ON</span></li>
                     <li>The game will now create log files in:<br>
                         <code>%LOCALAPPDATA%\TL\Saved\CombatLogs</code></li>
+                    <li><span class="highlight">Note:</span> Logs are only written after you leave combat (zone out or wait between pulls)</li>
                 </ol>
             </div>
             
@@ -777,6 +833,14 @@
                     <li><span class="highlight">Windows blocks the download</span> - Click "Keep" or "More info → Run anyway"</li>
                     <li><span class="highlight">Need to switch accounts</span> - Run <code>TL-Party-Agent.exe --login</code></li>
                 </ul>
+            </div>
+            
+            <!-- Support Card -->
+            <div class="coffee-card">
+                <p>Enjoying TL DPS Party? Help keep it running!</p>
+                <a href="https://buymeacoffee.com/SirPHz" target="_blank" class="coffee-btn">
+                    ☕ Buy Me a Coffee
+                </a>
             </div>
             
             <div style="text-align: center; margin-top: 20px;">
@@ -818,6 +882,13 @@
             <div class="agent-token">
                 <div class="label">Agent Token (paste into your local app)</div>
                 <div class="token" id="agentToken">-</div>
+            </div>
+            
+            <!-- Support Footer -->
+            <div style="text-align: center; margin-top: 20px; padding-top: 16px; border-top: 1px solid #334155;">
+                <a href="https://buymeacoffee.com/SirPHz" target="_blank" class="coffee-link">
+                    ☕ Buy Me a Coffee
+                </a>
             </div>
         </div>
         
@@ -873,15 +944,15 @@
             <!-- Important Info Box -->
             <div class="info-box warning">
                 <div class="info-box-header" onclick="this.nextElementSibling.classList.toggle('hidden')">
-                    ⚠️ Important: How Combat Logging Works
+                    ⚠️ Important: Read Before Starting
                     <span style="margin-left: auto; font-size: 0.7rem;">▼</span>
                 </div>
                 <div class="info-box-content">
                     <ul>
-                        <li><span class="highlight">Both dots must be green</span> for a member's damage to be tracked</li>
-                        <li>Combat logs are only written <span class="highlight">after you leave combat</span> (zone out or wait between pulls)</li>
-                        <li><span class="success">Party leader:</span> Wait until all members have left combat before clicking "End Encounter"</li>
-                        <li>If someone's damage is missing, they may still be in combat</li>
+                        <li><span class="highlight">Every member must enable Combat Logging in-game</span> (Settings → Game → Combat → Combat Log: ON) — without this, no damage will be tracked even if both dots are green!</li>
+                        <li><span class="highlight">Both dots must be green</span> for a member's damage to appear in results</li>
+                        <li>The game only writes logs <span class="highlight">after you leave combat</span> — zone out of the dungeon or wait between boss pulls</li>
+                        <li><span class="success">Party Leader:</span> Don't click "End Encounter" until everyone has left combat, or their damage won't be included</li>
                     </ul>
                 </div>
             </div>
@@ -908,6 +979,13 @@
             
             <div id="noResults" class="no-results">
                 No encounter results yet. Leader can start an encounter above.
+            </div>
+            
+            <!-- Support Footer -->
+            <div style="text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid #334155;">
+                <a href="https://buymeacoffee.com/SirPHz" target="_blank" class="coffee-link">
+                    ☕ Buy Me a Coffee
+                </a>
             </div>
         </div>
     </div>
