@@ -224,14 +224,32 @@ async def auth_callback(code: str, state: Optional[str] = None):
     
     # Create or update user
     user_id = user_data["id"]
-    agent_token = generate_agent_token()
     
-    users[user_id] = User(
-        id=user_id,
-        username=user_data["username"],
-        avatar=user_data.get("avatar"),
-        token=agent_token,
-    )
+    # Check if user already exists (preserve their token!)
+    if user_id in users:
+        # Update user info but keep existing token
+        existing_token = users[user_id].token
+        users[user_id] = User(
+            id=user_id,
+            username=user_data["username"],
+            avatar=user_data.get("avatar"),
+            token=existing_token,
+        )
+        agent_token = existing_token
+        print(f"[Auth] User {user_data['username']} logged in (existing token)")
+    else:
+        # New user - generate new token
+        agent_token = generate_agent_token()
+        users[user_id] = User(
+            id=user_id,
+            username=user_data["username"],
+            avatar=user_data.get("avatar"),
+            token=agent_token,
+        )
+        user_tokens[agent_token] = user_id
+        print(f"[Auth] New user {user_data['username']} registered")
+    
+    # Make sure token -> user_id mapping exists
     user_tokens[agent_token] = user_id
     
     # Check if this is an agent login
@@ -306,6 +324,9 @@ async def create_party(token: str = Query(...)):
     parties[code] = party
     user_parties[user_id] = code
     
+    print(f"[Party] Created party {code} by {user.username} (user_id={user_id})")
+    print(f"[Party] user_parties now: {user_parties}")
+    
     return {"code": code, "is_leader": True}
 
 
@@ -336,6 +357,9 @@ async def join_party(code: str, token: str = Query(...)):
         agent_connected=user_id in agent_sockets,
     )
     user_parties[user_id] = code
+    
+    print(f"[Party] {user.username} joined party {code} (user_id={user_id})")
+    print(f"[Party] user_parties now: {user_parties}")
     
     # Notify other members
     await broadcast_to_party(code, {
@@ -376,6 +400,9 @@ async def leave_party(token: str = Query(...)):
         del party.members[user_id]
     del user_parties[user_id]
     
+    print(f"[Party] User {user_id} left party {code}")
+    print(f"[Party] user_parties now: {user_parties}")
+    
     # If leader left, disband or transfer
     if party.leader_id == user_id:
         if party.members:
@@ -407,8 +434,19 @@ async def debug_parties():
     return {
         "party_count": len(parties),
         "party_codes": list(parties.keys()),
+        "parties": {
+            code: {
+                "leader_id": p.leader_id,
+                "members": list(p.members.keys()),
+                "encounter_active": p.encounter_active,
+            }
+            for code, p in parties.items()
+        },
         "user_count": len(users),
         "token_count": len(user_tokens),
+        "user_parties": dict(user_parties),
+        "web_sockets": list(web_sockets.keys()),
+        "agent_sockets": list(agent_sockets.keys()),
     }
 
 
@@ -477,6 +515,8 @@ async def start_encounter(code: str, token: str = Query(...)):
     party.encounter_started_at = datetime.now()
     party.results = []  # Clear previous results
     
+    print(f"[Encounter] Started in party {code}")
+    
     # Broadcast to all members (web + agents)
     await broadcast_to_party(code, {
         "type": "encounter_start",
@@ -504,6 +544,8 @@ async def end_encounter(code: str, token: str = Query(...)):
     
     party.encounter_active = False
     
+    print(f"[Encounter] Ended in party {code}")
+    
     # Broadcast end signal - agents will submit results
     await broadcast_to_party(code, {
         "type": "encounter_end",
@@ -520,6 +562,8 @@ async def broadcast_to_party(code: str, message: dict):
         return
     
     party = parties[code]
+    print(f"[Broadcast] Sending {message.get('type')} to party {code} ({len(party.members)} members)")
+    
     for member in party.members.values():
         user_id = member.user_id
         
@@ -527,7 +571,9 @@ async def broadcast_to_party(code: str, message: dict):
         if user_id in web_sockets:
             try:
                 await web_sockets[user_id].send_json(message)
-            except:
+                print(f"[Broadcast] Sent to web client {user_id}")
+            except Exception as e:
+                print(f"[Broadcast] Failed to send to web {user_id}: {e}")
                 del web_sockets[user_id]
                 member.connected = False
         
@@ -535,7 +581,9 @@ async def broadcast_to_party(code: str, message: dict):
         if user_id in agent_sockets:
             try:
                 await agent_sockets[user_id].send_json(message)
-            except:
+                print(f"[Broadcast] Sent to agent {user_id}")
+            except Exception as e:
+                print(f"[Broadcast] Failed to send to agent {user_id}: {e}")
                 del agent_sockets[user_id]
                 member.agent_connected = False
 
@@ -553,6 +601,9 @@ async def websocket_endpoint(websocket: WebSocket, token: str, source: str = "we
     
     await websocket.accept()
     
+    user = users[user_id]
+    print(f"[WS] {source} connected: {user.username} (user_id={user_id})")
+    
     # Store in global websocket storage (works regardless of party status)
     if source == "agent":
         agent_sockets[user_id] = websocket
@@ -561,6 +612,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str, source: str = "we
     
     # If user is in a party, update their member status
     party_code = user_parties.get(user_id)
+    print(f"[WS] User {user_id} party_code from user_parties: {party_code}")
+    
     if party_code and party_code in parties:
         party = parties[party_code]
         if user_id in party.members:
@@ -583,7 +636,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str, source: str = "we
             data = await websocket.receive_json()
             await handle_ws_message(user_id, data, source)
     except WebSocketDisconnect:
-        pass
+        print(f"[WS] {source} disconnected: {user.username}")
     finally:
         # Remove from global storage
         if source == "agent":
@@ -613,15 +666,22 @@ async def websocket_endpoint(websocket: WebSocket, token: str, source: str = "we
 async def handle_ws_message(user_id: str, data: dict, source: str):
     """Handle incoming WebSocket messages"""
     msg_type = data.get("type")
+    print(f"[WS] Message from {user_id} ({source}): {msg_type}")
     
     if msg_type == "submit_results":
         # Agent submitting encounter results (one per target)
         party_code = user_parties.get(user_id)
+        print(f"[WS] submit_results - user_id={user_id}, party_code={party_code}")
+        print(f"[WS] user_parties: {user_parties}")
+        print(f"[WS] data: {data}")
+        
         if not party_code or party_code not in parties:
+            print(f"[WS] ERROR: User {user_id} not in a party! Cannot submit results.")
             return
         
         party = parties[party_code]
         user = users[user_id]
+        print(f"[WS] Processing results for party {party_code}, user {user.username}")
         
         target = data.get("target", "Unknown")
         
@@ -634,6 +694,8 @@ async def handle_ws_message(user_id: str, data: dict, source: str):
             dps=data.get("dps", 0),
         )
         
+        print(f"[WS] Created result: {result}")
+        
         # Update target name from first result
         if not party.encounter_target and result.target:
             party.encounter_target = result.target
@@ -641,6 +703,8 @@ async def handle_ws_message(user_id: str, data: dict, source: str):
         # Replace existing result from same user + same target (allow multiple targets per user)
         party.results = [r for r in party.results if not (r.user_id == user_id and r.target == target)]
         party.results.append(result)
+        
+        print(f"[WS] Party now has {len(party.results)} results")
         
         # Group results by target and sort by damage within each group
         grouped_results = group_results_by_target(party.results)
@@ -662,6 +726,8 @@ async def handle_ws_message(user_id: str, data: dict, source: str):
                 for r in sorted(party.results, key=lambda x: x.total_damage, reverse=True)
             ],
         })
+        
+        print(f"[WS] Broadcasted results_update")
 
 
 # === SERVE FRONTEND ===
@@ -733,6 +799,7 @@ if __name__ == "__main__":
     print("=" * 50)
     print(f"  Web UI: {BASE_URL}")
     print(f"  Login:  {BASE_URL}/auth/login")
+    print(f"  Debug:  {BASE_URL}/debug/parties")
     print("=" * 50 + "\n")
     
     uvicorn.run(app, host="0.0.0.0", port=8000)
