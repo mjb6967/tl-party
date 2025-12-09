@@ -534,27 +534,6 @@
             padding: 24px;
         }
         
-        .agent-token {
-            margin-top: 16px;
-            padding: 12px;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 8px;
-        }
-        
-        .agent-token .label {
-            font-size: 0.75rem;
-            color: #64748b;
-            margin-bottom: 6px;
-        }
-        
-        .agent-token .token {
-            font-family: 'Consolas', monospace;
-            font-size: 0.8rem;
-            color: #94a3b8;
-            word-break: break-all;
-            user-select: all;
-        }
-        
         .hidden { display: none !important; }
         
         /* Buy Me a Coffee */
@@ -637,42 +616,6 @@
         .nav-link.active {
             color: #22d3ee;
             background: rgba(34, 211, 238, 0.1);
-        }
-        
-        /* Download Page */
-        .download-header {
-            text-align: center;
-            margin-bottom: 24px;
-        }
-        
-        .download-header h2 {
-            color: #22d3ee;
-            font-size: 1.5rem;
-            margin-bottom: 8px;
-        }
-        
-        .download-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            width: 100%;
-            padding: 16px 24px;
-            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
-            border: none;
-            border-radius: 8px;
-            color: white;
-            font-size: 1.1rem;
-            font-weight: 600;
-            cursor: pointer;
-            text-decoration: none;
-            margin-bottom: 24px;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        
-        .download-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 20px rgba(34, 197, 94, 0.3);
         }
         
         .instructions {
@@ -771,85 +714,9 @@
     <div class="container">
         <!-- Navigation -->
         <nav class="nav" id="mainNav">
-            <span class="nav-link active" onclick="showPage('main')" id="navMain">🏠 Home</span>
-            <span class="nav-link" onclick="showPage('download')" id="navDownload">📥 Download Agent</span>
+            <span class="nav-link active" id="navMain">🏠 Home</span>
             <a href="https://buymeacoffee.com/SirPHz" target="_blank" class="coffee-link">☕ Support</a>
         </nav>
-        
-        <!-- Download View -->
-        <div id="downloadView" class="card hidden">
-            <div class="download-header">
-                <h2>📥 Download Party Agent</h2>
-                <p class="subtitle">Required for each party member to share their DPS</p>
-            </div>
-            
-            <a href="/download/agent" class="download-btn">
-                ⬇️ Download TL-Party-Agent.exe
-            </a>
-            
-            <div class="warning-box">
-                <h4>🚨 REQUIRED: Enable Combat Logging In-Game</h4>
-                <p><strong>Every party member</strong> must turn this on or their damage will not be tracked — even if both status dots are green!</p>
-            </div>
-            
-            <div class="instructions">
-                <h3>📋 Step 1: Enable Combat Logging (Required)</h3>
-                <ol>
-                    <li>Open <span class="highlight">Throne and Liberty</span></li>
-                    <li>Go to <span class="highlight">Settings → Shortcuts → Ring Menu Settings</span></li>
-                    <li>Add <span class="highlight">"Combat Meter"</span> to one of your Ring Menu slots</li>
-                    <li>Save settings and exit the menu</li>
-                    <li>Open your <span class="highlight">Ring Menu</span> in-game (default: Alt key)</li>
-                    <li>Click the <span class="highlight">Combat Meter</span> option to turn it <span class="highlight">ON</span></li>
-                    <li>The game will now create log files in:<br>
-                        <code>%LOCALAPPDATA%\TL\Saved\CombatLogs</code></li>
-                    <li><span class="highlight">Note:</span> Logs are only written after you leave combat (zone out or wait between pulls)</li>
-                </ol>
-            </div>
-            
-            <div class="instructions">
-                <h3>🚀 Step 2: Run the Agent</h3>
-                <ol>
-                    <li>Download <span class="highlight">TL-Party-Agent.exe</span> above</li>
-                    <li>Double-click to run it</li>
-                    <li>A browser window will open - <span class="highlight">Login with Discord</span></li>
-                    <li>You'll be redirected to this website (logged in)</li>
-                    <li>The agent window will show <span class="highlight">"Connected"</span></li>
-                </ol>
-            </div>
-            
-            <div class="instructions">
-                <h3>👥 Step 3: Join a Party</h3>
-                <ol>
-                    <li>On this website, <span class="highlight">Create</span> or <span class="highlight">Join</span> a party</li>
-                    <li>Share the 4-letter party code with your group</li>
-                    <li>Make sure everyone has the agent running</li>
-                    <li>The <span class="highlight">party leader</span> controls Start/End encounter</li>
-                </ol>
-            </div>
-            
-            <div class="instructions">
-                <h3>❓ Troubleshooting</h3>
-                <ul>
-                    <li><span class="highlight">Agent shows "Disconnected"</span> - Run with <code>--login</code> to re-authenticate</li>
-                    <li><span class="highlight">No damage showing</span> - Make sure combat logging is enabled in-game</li>
-                    <li><span class="highlight">Windows blocks the download</span> - Click "Keep" or "More info → Run anyway"</li>
-                    <li><span class="highlight">Need to switch accounts</span> - Run <code>TL-Party-Agent.exe --login</code></li>
-                </ul>
-            </div>
-            
-            <!-- Support Card -->
-            <div class="coffee-card">
-                <p>Enjoying TL DPS Party? Help keep it running!</p>
-                <a href="https://buymeacoffee.com/SirPHz" target="_blank" class="coffee-btn">
-                    ☕ Buy Me a Coffee
-                </a>
-            </div>
-            
-            <div style="text-align: center; margin-top: 20px;">
-                <span class="back-link" onclick="showPage('main')">← Back to Home</span>
-            </div>
-        </div>
         
         <!-- Login View -->
         <div id="loginView" class="card">
@@ -880,11 +747,6 @@
             <div class="input-group">
                 <input type="text" id="joinCode" placeholder="CODE" maxlength="4">
                 <button class="btn" onclick="joinParty()">Join</button>
-            </div>
-            
-            <div class="agent-token">
-                <div class="label">Agent Token (paste into your local app)</div>
-                <div class="token" id="agentToken">-</div>
             </div>
             
             <!-- Support Footer -->
@@ -919,7 +781,7 @@
             <div class="status-legend">
                 <div class="status-legend-item" style="color: #64748b; font-size: 0.65rem;">
                     <span>🌐</span>
-                    <span>📡</span>
+                    <span>📊</span>
                     <span>Status</span>
                 </div>
                 <div class="status-legend-item">
@@ -930,12 +792,12 @@
                 <div class="status-legend-item">
                     <span class="status-dot online"></span>
                     <span class="status-dot"></span>
-                    <span>No agent</span>
+                    <span>No DPS Meter</span>
                 </div>
                 <div class="status-legend-item">
                     <span class="status-dot"></span>
                     <span class="status-dot online"></span>
-                    <span>Agent only</span>
+                    <span>DPS Meter only</span>
                 </div>
                 <div class="status-legend-item">
                     <span class="status-dot"></span>
@@ -1038,7 +900,6 @@
             document.getElementById('userName').textContent = user.username;
             document.getElementById('partyUserAvatar').src = avatar;
             document.getElementById('partyUserName').textContent = user.username;
-            document.getElementById('agentToken').textContent = user.agent_token;
         }
         
         function updatePartyView() {
@@ -1052,9 +913,9 @@
                     <img class="member-avatar" src="${getAvatarUrl(m.user_id, m.avatar)}">
                     <span class="member-name">${m.username}</span>
                     ${m.user_id === party.leader_id ? '<span class="leader-badge">LEADER</span>' : ''}
-                    <div class="member-status" title="${m.connected && m.agent_connected ? '✓ Ready to track damage' : m.connected ? '⚠ Agent not running' : m.agent_connected ? '⚠ Browser disconnected' : '✗ Offline'}">
+                    <div class="member-status" title="${m.connected && m.agent_connected ? '✔ Ready to track damage' : m.connected ? '⚠ DPS Meter not connected' : m.agent_connected ? '⚠ Browser disconnected' : '✗ Offline'}">
                         <span class="status-dot ${m.connected ? 'online' : ''}" title="Website: ${m.connected ? 'Connected' : 'Disconnected'}"></span>
-                        <span class="status-dot ${m.agent_connected ? 'online' : ''}" title="Agent: ${m.agent_connected ? 'Running' : 'Not running'}"></span>
+                        <span class="status-dot ${m.agent_connected ? 'online' : ''}" title="DPS Meter: ${m.agent_connected ? 'Connected' : 'Not connected'}"></span>
                     </div>
                 </div>
             `).join('');
@@ -1309,30 +1170,7 @@
             party = null;
             if (ws) ws.close();
             showView('loginView');
-        }
-        
-        // Page navigation (main vs download)
-        function showPage(page) {
-            const mainViews = ['loginView', 'lobbyView', 'partyView'];
-            const downloadView = document.getElementById('downloadView');
-            const mainNav = document.getElementById('mainNav');
-            
-            if (page === 'download') {
-                // Hide all main views, show download
-                mainViews.forEach(id => document.getElementById(id).classList.add('hidden'));
-                downloadView.classList.remove('hidden');
-                document.getElementById('navMain').classList.remove('active');
-                document.getElementById('navDownload').classList.add('active');
-            } else {
-                // Hide download, show appropriate main view
-                downloadView.classList.add('hidden');
-                document.getElementById('navMain').classList.add('active');
-                document.getElementById('navDownload').classList.remove('active');
-                
-                // Show the correct view based on login state
-                if (!token) {
-                    showView('loginView');
-                } else if (party && party.code) {
+        } else if (party && party.code) {
                     showView('partyView');
                 } else {
                     showView('lobbyView');

@@ -732,41 +732,37 @@ async def handle_ws_message(user_id: str, data: dict, source: str):
 
 # === SERVE FRONTEND ===
 
-# Agent download URL - set via environment variable or use GitHub releases
-AGENT_DOWNLOAD_URL = os.environ.get("AGENT_DOWNLOAD_URL", "")
-
 @app.get("/download/agent")
 async def download_agent():
-    """Redirect to agent download or serve from URL"""
-    if AGENT_DOWNLOAD_URL:
-        return RedirectResponse(AGENT_DOWNLOAD_URL)
-    else:
-        # Return a helpful HTML page if no download URL configured
-        return HTMLResponse("""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Agent Download</title>
-                <style>
-                    body { font-family: Arial, sans-serif; background: #1a1a2e; color: #e2e8f0; 
-                           display: flex; justify-content: center; align-items: center; 
-                           height: 100vh; margin: 0; }
-                    .container { text-align: center; max-width: 500px; padding: 20px; }
-                    h1 { color: #fbbf24; }
-                    p { color: #94a3b8; }
-                    a { color: #22d3ee; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>⚠️ Download Not Configured</h1>
-                    <p>The server administrator needs to set the AGENT_DOWNLOAD_URL environment variable.</p>
-                    <p>This should point to the TL-Party-Agent.exe file (e.g., a GitHub release URL).</p>
-                    <p><a href="/">← Back to Home</a></p>
-                </div>
-            </body>
-            </html>
-        """)
+    """Legacy endpoint - agent is now built into the DPS Meter"""
+    return HTMLResponse("""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>TL DPS Party</title>
+            <meta http-equiv="refresh" content="5;url=/">
+            <style>
+                body { font-family: Arial, sans-serif; background: #1a1a2e; color: #e2e8f0; 
+                       display: flex; justify-content: center; align-items: center; 
+                       height: 100vh; margin: 0; }
+                .container { text-align: center; max-width: 500px; padding: 20px; }
+                h1 { color: #22c55e; }
+                p { color: #94a3b8; line-height: 1.6; }
+                a { color: #22d3ee; }
+                .highlight { color: #fbbf24; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>✅ No Separate Download Needed!</h1>
+                <p>Party broadcasting is now <span class="highlight">built directly into the DPS Meter</span>.</p>
+                <p>Simply enable <span class="highlight">"Party Broadcasting"</span> in the Party tab of your DPS Meter to connect.</p>
+                <p style="margin-top: 24px;"><a href="/">← Back to Home</a></p>
+                <p style="font-size: 0.8rem; color: #64748b;">Redirecting in 5 seconds...</p>
+            </div>
+        </body>
+        </html>
+    """)
 
 
 @app.get("/")
