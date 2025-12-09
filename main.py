@@ -596,7 +596,10 @@ async def websocket_endpoint(websocket: WebSocket, token: str, source: str = "we
     """
     user_id = user_tokens.get(token)
     if not user_id or user_id not in users:
-        await websocket.close(code=4001, reason="Invalid token")
+        # Must accept before we can close with a reason code
+        await websocket.accept()
+        await websocket.close(code=4001, reason="Invalid or expired token - please re-authenticate")
+        print(f"[WS] Rejected {source} connection: invalid token")
         return
     
     await websocket.accept()
