@@ -206,7 +206,14 @@ async def auth_callback(code: str, state: Optional[str] = None):
         )
         
         if token_response.status_code != 200:
-            raise HTTPException(400, "Failed to authenticate with Discord")
+            # Log detailed error for debugging
+            print(f"[Auth] Discord token exchange FAILED!")
+            print(f"[Auth]   Status: {token_response.status_code}")
+            print(f"[Auth]   Response: {token_response.text}")
+            print(f"[Auth]   Client ID: {DISCORD_CLIENT_ID}")
+            print(f"[Auth]   Redirect URI: {DISCORD_REDIRECT_URI}")
+            print(f"[Auth]   Secret set: {'Yes' if DISCORD_CLIENT_SECRET != 'YOUR_SECRET_HERE' else 'NO - using default!'}")
+            raise HTTPException(400, f"Failed to authenticate with Discord: {token_response.text}")
         
         token_data = token_response.json()
         access_token = token_data["access_token"]
@@ -447,6 +454,19 @@ async def debug_parties():
         "user_parties": dict(user_parties),
         "web_sockets": list(web_sockets.keys()),
         "agent_sockets": list(agent_sockets.keys()),
+    }
+
+
+@app.get("/debug/auth")
+async def debug_auth():
+    """Debug endpoint to check OAuth configuration (does not reveal secrets)"""
+    return {
+        "client_id": DISCORD_CLIENT_ID,
+        "redirect_uri": DISCORD_REDIRECT_URI,
+        "base_url": BASE_URL,
+        "secret_configured": DISCORD_CLIENT_SECRET != "YOUR_SECRET_HERE",
+        "secret_length": len(DISCORD_CLIENT_SECRET) if DISCORD_CLIENT_SECRET else 0,
+        "secret_preview": DISCORD_CLIENT_SECRET[:4] + "..." if DISCORD_CLIENT_SECRET and len(DISCORD_CLIENT_SECRET) > 4 else "NOT SET",
     }
 
 
